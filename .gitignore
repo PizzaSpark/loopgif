@@ -1,3 +1,4 @@
-*.venv
+.venv
 *.mp4
 *.gif
+temp_frames
