@@ -97,7 +97,7 @@ def main():
     start, end = find_matching_frames(frames, args.threshold)
     
     if start is not None and end is not None:
-        create_gif(frames, start, end, args.output)
+        create_gif(frames, start, end, args.output, args.video)
     else:
         print("No suitable looping frames found. Try adjusting the threshold.")
     
