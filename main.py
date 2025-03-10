@@ -66,11 +66,24 @@ def find_matching_frames(frames, threshold=0.95):
     print("No suitable matching frames found.")
     return None, None
 
-def create_gif(frames, start, end, output_gif):
+def create_gif(frames, start, end, output_gif, video_path):
     print(f"Creating GIF from frame {start} to frame {end}...")
+
+    # Load video to get FPS
+    cap = cv2.VideoCapture(video_path)
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    cap.release()
+
+    if fps <= 0:
+        fps = 30  # Fallback to default FPS if detection fails
+
+    frame_duration = int(1000 / fps)  # Convert FPS to milliseconds per frame
+
     images = [Image.open(frames[i]) for i in range(start, end)]
-    images[0].save(output_gif, save_all=True, append_images=images[1:], loop=0, duration=1)
-    print(f"GIF saved as {output_gif}")
+    images[0].save(output_gif, save_all=True, append_images=images[1:], loop=0, duration=frame_duration)
+
+    print(f"GIF saved as {output_gif} (Duration per frame: {frame_duration} ms)")
+
 
 def main():
     parser = argparse.ArgumentParser(description="Create a looping GIF from a video.")
