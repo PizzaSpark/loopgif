@@ -69,7 +69,7 @@ def find_matching_frames(frames, threshold=0.95):
 def create_gif(frames, start, end, output_gif):
     print(f"Creating GIF from frame {start} to frame {end}...")
     images = [Image.open(frames[i]) for i in range(start, end)]
-    images[0].save(output_gif, save_all=True, append_images=images[1:], loop=0, duration=50)
+    images[0].save(output_gif, save_all=True, append_images=images[1:], loop=0, duration=1)
     print(f"GIF saved as {output_gif}")
 
 def main():
