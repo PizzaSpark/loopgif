@@ -2,3 +2,5 @@
 *.mp4
 *.gif
 temp_frames
+downscaled_frames
+original_frames
