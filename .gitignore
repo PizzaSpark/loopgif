@@ -1,6 +1,9 @@
-.venv
+.venv/
+__pycache__/
 *.mp4
+*.mkv
+*.webm
 *.gif
-temp_frames
-downscaled_frames
-original_frames
+temp_frames/
+downscaled_frames/
+original_frames/
