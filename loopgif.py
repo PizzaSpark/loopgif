@@ -15,6 +15,7 @@ Usage:
   python loopgif.py "video.mkv" --start 120 --end 160      (manual frames)
   python loopgif.py "video.mkv" --top 5                    (just list candidates)
   python loopgif.py "video.mkv" --rank 2                   (use the 2nd best match)
+  python loopgif.py "video.mkv" --from 0:05 --to 0:12      (only search that part)
 
 Requires: ffmpeg + ffprobe on PATH, numpy.
 """
@@ -41,9 +42,27 @@ def probe(video):
     return float(num) / float(den), s["width"], s["height"]
 
 
-def fingerprints(video):
+def parse_time(s):
+    """'12.5' -> 12.5, '1:05' -> 65.0, '1:02:03.5' -> 3723.5"""
+    secs = 0.0
+    for part in s.split(":"):
+        secs = secs * 60 + float(part)
+    return secs
+
+
+def range_args(t_from, t_to):
+    """ffmpeg input options that limit decoding to [t_from, t_to)."""
+    args = []
+    if t_from:
+        args += ["-ss", f"{t_from:.6f}"]
+    if t_to is not None:
+        args += ["-t", f"{t_to - (t_from or 0):.6f}"]
+    return args
+
+
+def fingerprints(video, rng=()):
     """Return an (N, FP_H*FP_W) float32 array, one row per frame."""
-    cmd = ["ffmpeg", "-v", "error", "-i", str(video), "-an",
+    cmd = ["ffmpeg", "-v", "error", *rng, "-i", str(video), "-an",
            "-vf", f"scale={FP_W}:{FP_H}:flags=area,format=gray",
            "-vsync", "passthrough", "-f", "rawvideo", "-"]
     raw = subprocess.run(cmd, capture_output=True, check=True).stdout
@@ -101,13 +120,14 @@ def find_loops(fp, fps, min_sec, max_sec, top):
     return picked, d
 
 
-def render_gif(video, start, end, out, fps, width, src_fps):
-    """Render frames [start, end) (end excluded) to a looping GIF."""
-    vf =(f"select='between(n\\,{start}\\,{end - 1})',setpts=N/({src_fps}*TB),"
+def render_gif(video, start, end, out, fps, width, src_fps, rng=()):
+    """Render frames [start, end) (end excluded) to a looping GIF.
+    Frame numbers count from the start of `rng` (or the video if no range)."""
+    vf = (f"select='between(n\\,{start}\\,{end - 1})',setpts=N/({src_fps}*TB),"
           f"fps={fps},scale={width}:-1:flags=lanczos,split[a][b];"
           f"[a]palettegen=max_colors=256:stats_mode=full[p];"
           f"[b][p]paletteuse=dither=sierra2_4a")
-    cmd = ["ffmpeg", "-v", "error", "-y", "-i", str(video), "-an",
+    cmd = ["ffmpeg", "-v", "error", "-y", *rng, "-i", str(video), "-an",
            "-filter_complex", vf, "-loop", "0", str(out)]
     subprocess.run(cmd, check=True)
 
@@ -122,6 +142,10 @@ def main():
     ap.add_argument("--max-sec", type=float, default=6.0, help="longest loop to accept")
     ap.add_argument("--max-diff", type=float, default=6.0,
                     help="seam score above this counts as 'no loop found' (0-255 scale)")
+    ap.add_argument("--from", dest="t_from", type=parse_time, metavar="TIME",
+                    help="only search from this time (seconds or m:ss)")
+    ap.add_argument("--to", dest="t_to", type=parse_time, metavar="TIME",
+                    help="only search up to this time (seconds or m:ss)")
     ap.add_argument("--start", type=int, help="manual start frame")
     ap.add_argument("--end", type=int, help="manual end frame (the repeat of start; excluded)")
     ap.add_argument("--top", type=int, default=0, help="list N best candidates and exit")
@@ -134,19 +158,34 @@ def main():
     fps = args.fps or min(src_fps, 30.0)
     out = Path(args.out) if args.out else video.with_name(video.stem + "_loop.gif")
 
+    if args.t_from is not None and args.t_to is not None and args.t_to <= args.t_from:
+        sys.exit("--to must be later than --from.")
+
+    # Frame numbers shown to the user always count from the start of the video.
+    # Inside a --from/--to range, ffmpeg numbers frames from the range start, so
+    # `off` converts between the two.
+    rng, off = (), 0
     if args.start is not None and args.end is not None:
         start, end = args.start, args.end
         print(f"Using manual frames {start} -> {end}")
     else:
-        print(f"Fingerprinting {video.name} ({vw}x{vh} @ {src_fps:g} fps)...")
-        fp = fingerprints(video)
+        rng = range_args(args.t_from, args.t_to)
+        off = int(np.ceil((args.t_from or 0) * src_fps - 1e-6))
+        where = ""
+        if rng:
+            t_to = f"{args.t_to:g}s" if args.t_to is not None else "end"
+            where = f", searching {args.t_from or 0:g}s - {t_to}"
+        print(f"Fingerprinting {video.name} ({vw}x{vh} @ {src_fps:g} fps{where})...")
+        fp = fingerprints(video, rng)
         print(f"  {len(fp)} frames")
+        if len(fp) < 2:
+            sys.exit("That range has no frames. Check --from/--to.")
         cands, _ = find_loops(fp, src_fps, args.min_sec, args.max_sec, max(args.top, args.rank))
         if args.top:
             print(f"\nTop {len(cands)} loop candidates (lower score = smoother seam):")
             for s, i, j in cands:
-                print(f"  frames {i:5d} -> {j:5d}  ({(j - i) / src_fps:5.2f}s, "
-                      f"starts at {i / src_fps:6.2f}s)  score {s:.2f}")
+                print(f"  frames {i + off:5d} -> {j + off:5d}  ({(j - i) / src_fps:5.2f}s, "
+                      f"starts at {(i + off) / src_fps:6.2f}s)  score {s:.2f}")
             return
         if not cands or cands[0][0] > args.max_diff:
             msg = f" (best score {cands[0][0]:.2f})" if cands else ""
@@ -155,11 +194,11 @@ def main():
         if args.rank > len(cands):
             sys.exit(f"Only {len(cands)} candidate(s) found; --rank {args.rank} is out of range.")
         score, start, end = cands[args.rank - 1]
-        print(f"Loop found: frames {start} -> {end} "
-              f"({(end - start) / src_fps:.2f}s, starts at {start / src_fps:.2f}s), "
+        print(f"Loop found: frames {start + off} -> {end + off} "
+              f"({(end - start) / src_fps:.2f}s, starts at {(start + off) / src_fps:.2f}s), "
               f"seam score {score:.2f}")
 
-    render_gif(video, start, end, out, fps, args.width, src_fps)
+    render_gif(video, start, end, out, fps, args.width, src_fps, rng)
     size = out.stat().st_size / 1e6
     print(f"Saved {out} ({end - start} frames, {size:.1f} MB)")
 

@@ -35,6 +35,7 @@ python loopgif.py "clip.mkv"                         # find the loop, write clip
 python loopgif.py "clip.mkv" -o out.gif --width 360  # smaller output
 python loopgif.py "clip.mkv" --top 10                # list the best cut points
 python loopgif.py "clip.mkv" --rank 2                # don't like the result? use the 2nd best
+python loopgif.py "clip.mkv" --from 0:05 --to 0:12   # only search that part of the video
 python loopgif.py "clip.mkv" --start 120 --end 169   # choose the frames yourself
 ```
 
@@ -43,6 +44,7 @@ python loopgif.py "clip.mkv" --start 120 --end 169   # choose the frames yoursel
 | `-o, --out` | `<video>_loop.gif` | Output file |
 | `--width` | 480 | GIF width in px (height keeps aspect) |
 | `--fps` | video fps, max 30 | GIF frame rate (lower = smaller file) |
+| `--from` / `--to` | whole video | Only search this time range (`12.5`, `1:05`, `1:02:03`). Frame numbers shown still count from the start of the video |
 | `--min-sec` / `--max-sec` | 0.4 / 6.0 | Allowed loop length |
 | `--max-diff` | 6.0 | Seam score above this counts as "no loop found" |
 | `--top N` | – | Print the N best candidates and exit |
