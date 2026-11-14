@@ -22,6 +22,7 @@ Requires: ffmpeg + ffprobe on PATH, numpy.
 
 import argparse
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -64,7 +65,7 @@ def fingerprints(video, rng=()):
     """Return an (N, FP_H*FP_W) float32 array, one row per frame."""
     cmd = ["ffmpeg", "-v", "error", *rng, "-i", str(video), "-an",
            "-vf", f"scale={FP_W}:{FP_H}:flags=area,format=gray",
-           "-vsync", "passthrough", "-f", "rawvideo", "-"]
+           "-fps_mode", "passthrough", "-f", "rawvideo", "-"]
     raw = subprocess.run(cmd, capture_output=True, check=True).stdout
     frames = np.frombuffer(raw, np.uint8).reshape(-1, FP_H * FP_W)
     return frames.astype(np.float32)
@@ -153,7 +154,15 @@ def main():
                     help="use the Nth best candidate instead of the best (see --top)")
     args = ap.parse_args()
 
+    missing = [t for t in ("ffmpeg", "ffprobe") if not shutil.which(t)]
+    if missing:
+        sys.exit(f"error: {' and '.join(missing)} not found on PATH. "
+                 "Install ffmpeg (e.g. `scoop install ffmpeg` or "
+                 "`winget install Gyan.FFmpeg`) and open a new terminal.")
+
     video = Path(args.video)
+    if not video.is_file():
+        sys.exit(f"error: video not found: {video}")
     src_fps, vw, vh = probe(video)
     fps = args.fps or min(src_fps, 30.0)
     out = Path(args.out) if args.out else video.with_name(video.stem + "_loop.gif")
