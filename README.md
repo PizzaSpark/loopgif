@@ -12,20 +12,28 @@ Think of a flipbook. If page 5 looks exactly like page 25, then pages 5–24 are
 full cycle of the motion.
 
 1. Every frame is shrunk to a tiny 64×36 grayscale image. That's its **fingerprint**.
-2. Every fingerprint is compared with every other one.
+2. Every fingerprint is compared with every other one that's a possible loop length
+   away (`--min-sec` to `--max-sec`).
 3. A possible cut is scored by comparing a few frames on *both sides* of it, so the
    movement has to line up, not just one still pose.
-4. Static sections (nothing moving) are ignored so a still shot isn't mistaken for a loop.
+4. Sections that barely move (`--min-motion`) are ignored so a still shot isn't
+   mistaken for a loop. This works for anime too, where most frames are held.
 5. If two cycle lengths score about the same, the shorter one wins (one cycle, not two).
 6. The section is rendered as a GIF with a palette tuned to that clip. The matching end
    frame is dropped because it duplicates the first frame and would cause a stutter.
+   If the GIF frame rate is lower than the video's, frames are spaced evenly across
+   the loop so the seam stays smooth.
 
-A 20-second 1080p clip takes about 4 seconds.
+A 20-second 1080p clip takes about 4 seconds; a whole 4-minute music video about 13.
+Most of that is ffmpeg decoding the video.
 
 ## Requirements
 
 - Python 3.9+
-- [ffmpeg](https://ffmpeg.org/) and ffprobe on your PATH
+- A recent [ffmpeg](https://ffmpeg.org/) (tested with 9.0), with ffmpeg and ffprobe
+  on your PATH. On Windows: `scoop install ffmpeg` or `winget install Gyan.FFmpeg`.
+  The script uses `-fps_mode`, which replaced `-vsync`, so very old builds without
+  `-fps_mode` won't work (and newer ones, e.g. 9.0, no longer accept `-vsync`).
 - numpy (`pip install -r requirements.txt`)
 
 ## Usage
@@ -47,9 +55,10 @@ python loopgif.py "clip.mkv" --start 120 --end 169   # choose the frames yoursel
 | `--from` / `--to` | whole video | Only search this time range (`12.5`, `1:05`, `1:02:03`). Frame numbers shown still count from the start of the video |
 | `--min-sec` / `--max-sec` | 0.4 / 6.0 | Allowed loop length |
 | `--max-diff` | 6.0 | Seam score above this counts as "no loop found" |
-| `--top N` | – | Print the N best candidates and exit |
+| `--min-motion` | 0.5 | Skip sections that move less than this per frame (filters out still shots) |
+| `--top N` | – | Print the N best candidates and exit. The same loop shifted by a few frames is only listed once |
 | `--rank N` | 1 | Use the Nth best candidate |
-| `--start` / `--end` | – | Manual frames; `end` is the repeat of `start` and is left out |
+| `--start` / `--end` | – | Manual frames (give both); `end` is the repeat of `start` and is left out |
 
 ## Limits
 
